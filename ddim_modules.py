@@ -190,7 +190,7 @@ class UNet(DiffusionUNet):
 
         self.bottleneck1 = ResidualBlock(96, 128, residual=True)
         self.bottleneck2 = ResidualBlock(128, 128, residual=False)
-
+        # asd
         self.up1 = UpBlock(128, 96, 96, block_depth)
         #self.attn_up1 = SelfAttention(96)
         self.up2 = UpBlock(96, 64, 64, block_depth)
