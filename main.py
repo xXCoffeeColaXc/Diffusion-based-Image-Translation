@@ -40,8 +40,8 @@ if __name__ == '__main__':
     # Model configuration.
     parser.add_argument('--c_in', type=int, default=3, help='dimension of input image')
     parser.add_argument('--c_out', type=int, default=3, help='dimension of output image')
-    parser.add_argument('--crop_size', type=int, default=64, help='crop size')
-    parser.add_argument('--image_size', type=int, default=64, help='image resolution')
+    parser.add_argument('--crop_size', type=int, default=128, help='crop size')
+    parser.add_argument('--image_size', type=int, default=128, help='image resolution')
     parser.add_argument('--conv_dim', type=int, default=64, help='number of conv filters in the first layer of the UNet')
     parser.add_argument('--block_depth', type=int, default=3, help='depth of conv layers in encoder/decoder')
     parser.add_argument('--time_emb_dim', type=int, default=256, help='number of channels for time embedding')
@@ -50,7 +50,7 @@ if __name__ == '__main__':
     parser.add_argument('--selected_attrs', '--list', nargs='+', help='selected attributes/domains', default=['rain', 'fog', 'night']) # rain, fog, night
     parser.add_argument('--batch_size', type=int, default=128, help='mini-batch size')
     parser.add_argument('--epochs', type=int, default=200, help='number of total epochs')
-    parser.add_argument('--lr', type=float, default=0.00002, help='learning rate')
+    parser.add_argument('--lr', type=float, default=0.0002, help='learning rate')
     parser.add_argument('--beta_start', type=float, default=0.0001, help='beta start for noise scheluder')
     parser.add_argument('--beta_end', type=float, default=0.02, help='beta end for noise scheluder')
     parser.add_argument('--s_parameter', type=float, default=0.008, help='Sharpness parameter, controls how "sudden" the change is. A lower value makes the cosine curve smoother.')
