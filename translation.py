@@ -7,10 +7,10 @@ from torchvision.transforms import transforms
 from tqdm import tqdm
 import os
 
-class DiffusionVisualizer(object):
-    def __init__(self, cfg, image_path, model_checkpoint_path):
+class DiffusionTranslation(object):
+    def __init__(self, cfg, dataloader, model_checkpoint_path):
         self.config = cfg
-        self.image_path = image_path
+        self.dataloader = dataloader
         self.model_checkpoint_path = model_checkpoint_path
         self.build_model()
         self.preprocess_image()
@@ -31,22 +31,22 @@ class DiffusionVisualizer(object):
         self.unet.to(self.config['device'])
         
 
-    def preprocess_image(self):
-        self.mean = torch.tensor([0.4865, 0.4998, 0.4323])
-        self.std = torch.tensor([0.2326, 0.2276, 0.2659])
+    # def preprocess_image(self):
+    #     self.mean = torch.tensor([0.4865, 0.4998, 0.4323])
+    #     self.std = torch.tensor([0.2326, 0.2276, 0.2659])
         
-        base_transforms = [
-            transforms.Resize(self.config['image_size'], transforms.InterpolationMode.BILINEAR),
-            transforms.RandomCrop(self.config['image_size']),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=self.mean, std=self.std),
-        ]
-        transform = transforms.Compose(base_transforms)
+    #     base_transforms = [
+    #         transforms.Resize(self.config['image_size'], transforms.InterpolationMode.BILINEAR),
+    #         transforms.RandomCrop(self.config['image_size']),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(mean=self.mean, std=self.std),
+    #     ]
+    #     transform = transforms.Compose(base_transforms)
 
-        image = Image.open(self.image_path).convert('RGB')
+    #     image = Image.open(self.image_path).convert('RGB')
  
-        self.test_image = transform(image)
-        self.test_image = self.test_image.to(self.config['device'])
+    #     self.test_image = transform(image)
+    #     self.test_image = self.test_image.to(self.config['device'])
     
     def prepare_noise_schedule(self):
         return torch.linspace(self.config['beta_start'], self.config['beta_end'], self.config['noise_steps'])
@@ -83,10 +83,9 @@ class DiffusionVisualizer(object):
         return noisy_images
 
 
-    def remove_noise_for_steps(self, noise_image, num_steps=10):
+    def remove_noise_for_steps(self, num_steps=10):
         # Start with pure noise
-        #noise_image = torch.randn((1, 3, self.config['image_size'], self.config['image_size'])).to(self.config['device'])
-        noise_image = noise_image.unsqueeze(0).to(self.config['device'])
+        noise_image = torch.randn((1, 3, self.config['image_size'], self.config['image_size'])).to(self.config['device'])
         denoised_images = [noise_image.squeeze(0).cpu().detach()]
 
         step_interval = self.config['noise_steps'] // num_steps  # Calculate the interval for saving images
@@ -157,10 +156,10 @@ if __name__ == '__main__':
         'beta_end': 0.02,
         'noise_steps': 1000
     }
-    test_image_path = 'data/leftImg8bit_trainvaltest/leftImg8bit/train/zurich/zurich_000038_000019_leftImg8bit.png'
+    test_image_path = 'data/leftImg8bit_trainvaltest/leftImg8bit/train/ulm/ulm_000054_000019_leftImg8bit.png'
     test_images = os.listdir('data/leftImg8bit_trainvaltest/leftImg8bit/test/leverkusen')
     model_path = 'outputs/checkpoints/run_12/500-checkpoint.ckpt'
-    visualizer = DiffusionVisualizer(cfg, test_image_path, model_path)
+    visualizer = DiffusionTranslation(cfg, test_image_path, model_path)
     num_steps = 1000
 
     batch_size = 4
@@ -170,8 +169,8 @@ if __name__ == '__main__':
 
     noisy_images = visualizer.add_noise_for_steps(num_steps)
     #visualizer.visualize(noisy_images, 'Noisy images')
-    print(noisy_images[-1].shape)
-    denoised_images = visualizer.remove_noise_for_steps(noisy_images[-1], num_steps)
+    
+    denoised_images = visualizer.remove_noise_for_steps(num_steps)
     #visualizer.visualize(denoised_images, 'Denoised images')
  
     visualizer.visualize_translation(noisy_images[0], denoised_images[-1])

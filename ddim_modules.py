@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import math
+from torch.functional import F
 
 class DiffusionUNet(nn.Module):
     """
@@ -8,33 +9,113 @@ class DiffusionUNet(nn.Module):
     """
     requires_alpha_hat_timestep = False
 
-class SelfAttention(nn.Module):
-    """
-    Implements self-attention mechanism.
+class MultiHeadSelfAttention(nn.Module):
+    def __init__(self, embed_size, num_heads):
+        super(MultiHeadSelfAttention, self).__init__()
+        self.embed_size = embed_size
+        self.num_heads = num_heads
+        self.head_dim = embed_size // num_heads
 
-    Args:
-        in_dim (int): Number of input channels.
-    """
-    def __init__(self, in_dim):
-        super(SelfAttention, self).__init__()
-        self.query_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim // 8, kernel_size=1)
-        self.key_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim // 8, kernel_size=1)
-        self.value_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim, kernel_size=1)
+        assert (
+            self.head_dim * num_heads == embed_size
+        ), "Embedding size needs to be divisible by number of heads"
 
-        self.softmax = nn.Softmax(dim=-1)
+        self.keys = nn.Linear(embed_size, embed_size, bias=False)
+        self.queries = nn.Linear(embed_size, embed_size, bias=False)
+        self.values = nn.Linear(embed_size, embed_size, bias=False)
+        self.fc_out = nn.Linear(embed_size, embed_size)
 
     def forward(self, x):
+        batch_size, seq_length, embed_size = x.shape
+
+        # Split the embedding into `num_heads` pieces
+        K = self.keys(x).view(batch_size, seq_length, self.num_heads, self.head_dim)
+        Q = self.queries(x).view(batch_size, seq_length, self.num_heads, self.head_dim)
+        V = self.values(x).view(batch_size, seq_length, self.num_heads, self.head_dim)
+
+        # Compute attention scores
+        energy = torch.einsum("nqhd,nkhd->nhqk", [Q, K]) / (self.embed_size ** (1 / 4))
+        attention = torch.softmax(energy, dim=-1)
+
+        # Apply attention to values and concatenate heads
+        out = torch.einsum("nhql,nlhd->nqhd", [attention, V]).reshape(batch_size, seq_length, embed_size)
+        out = self.fc_out(out)
+
+        return out
+
+
+class SimpleSelfAttention(nn.Module):
+    def __init__(self, embed_size):
+        super(SimpleSelfAttention, self).__init__()
+        self.embed_size = embed_size
+
+        self.keys = nn.Linear(embed_size, embed_size, bias=False)
+        self.queries = nn.Linear(embed_size, embed_size, bias=False)
+        self.values = nn.Linear(embed_size, embed_size, bias=False)
+
+    def forward(self, x):
+        # x shape: (batch_size, seq_len, embed_size)
+        K = self.keys(x)
+        Q = self.queries(x)
+        V = self.values(x)
+
+        # Compute attention scores
+        attention_scores = torch.matmul(Q, K.transpose(-2, -1)) / (self.embed_size ** 0.5)
+        attention = F.softmax(attention_scores, dim=-1)
+
+        # Apply attention to values
+        out = torch.matmul(attention, V)
+        return out
+
+class SelfAttention(nn.Module):
+    def __init__(self, channels, size):
+        super(SelfAttention, self).__init__()
+        self.channels = channels
+        self.size = size
+        self.mha = nn.MultiheadAttention(channels, 4, batch_first=True)
+        self.ln = nn.LayerNorm([channels])
+        self.ff_self = nn.Sequential(
+            nn.LayerNorm([channels]),
+            nn.Linear(channels, channels),
+            nn.GELU(),
+            nn.Linear(channels, channels),
+        )
+
+    def forward(self, x):
+        x = x.view(-1, self.channels, self.size * self.size).swapaxes(1, 2)
+        x_ln = self.ln(x)
+        attention_value, _ = self.mha(x_ln, x_ln, x_ln)
+        attention_value = attention_value + x
+        attention_value = self.ff_self(attention_value) + attention_value
+        return attention_value.swapaxes(2, 1).view(-1, self.channels, self.size, self.size)
+
+# class SelfAttention(nn.Module):
+#     """
+#     Implements self-attention mechanism.
+
+#     Args:
+#         in_dim (int): Number of input channels.
+#     """
+#     def __init__(self, in_dim):
+#         super(SelfAttention, self).__init__()
+#         self.query_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim // 8, kernel_size=1)
+#         self.key_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim // 8, kernel_size=1)
+#         self.value_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim, kernel_size=1)
+
+#         self.softmax = nn.Softmax(dim=-1)
+
+#     def forward(self, x):
         
-        batch_size, C, width, height = x.size()
-        query = self.query_conv(x).view(batch_size, -1, width * height).permute(0, 2, 1)
-        key = self.key_conv(x).view(batch_size, -1, width * height)
-        value = self.value_conv(x).view(batch_size, -1, width * height)
+#         batch_size, C, width, height = x.size()
+#         query = self.query_conv(x).view(batch_size, -1, width * height).permute(0, 2, 1)
+#         key = self.key_conv(x).view(batch_size, -1, width * height)
+#         value = self.value_conv(x).view(batch_size, -1, width * height)
 
-        attention = self.softmax(torch.bmm(query, key))
-        out = torch.bmm(value, attention.permute(0, 2, 1))
-        out = out.view(batch_size, C, width, height)
+#         attention = self.softmax(torch.bmm(query, key))
+#         out = torch.bmm(value, attention.permute(0, 2, 1))
+#         out = out.view(batch_size, C, width, height)
 
-        return out + x
+#         return out + x
     
     
 
@@ -57,7 +138,7 @@ class ResidualBlock(nn.Module):
 
         self.res = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
         self.double_conv = nn.Sequential(
-            nn.BatchNorm2d(in_channels),
+            nn.BatchNorm2d(in_channels), #TODO Try other normalization (group)
             nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
             nn.SiLU(),
             nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False)
@@ -161,33 +242,29 @@ class UNet(DiffusionUNet):
         self.embedding_upsample = nn.Upsample(size=(image_size, image_size), mode='nearest')
 
         #self.attn_down1 = SelfAttention(64)
-        self.down1 = DownBlock(64, 64, block_depth)
+        self.down1 = DownBlock(64, 32, block_depth)
+        self.down2 = DownBlock(32, 64, block_depth)
 
-        self.attn_down2 = SelfAttention(64)
-        self.down2 = DownBlock(64, 96, block_depth)
+        self.attn_down3 = SelfAttention(64, 32)
+        self.down3 = DownBlock(64, 96, block_depth)
 
-        self.attn_down3 = SelfAttention(96)
-        self.down3 = DownBlock(96, 128, block_depth)
+        self.attn_down4 = SelfAttention(96, 16)
+        self.down4 = DownBlock(96, 128, block_depth)
 
-        self.attn_down4 = SelfAttention(128)
-        self.down4 = DownBlock(128, 256, block_depth)
-
-        self.bottleneck1 = ResidualBlock(256, 512, residual=True)
-        self.attn_bottleneck = SelfAttention(512)
-        self.bottleneck2 = ResidualBlock(512, 512, residual=False)
+        self.bottleneck1 = ResidualBlock(128, 256, residual=True)
+        self.attn_bottleneck = SelfAttention(256, 8)
+        self.bottleneck2 = ResidualBlock(256, 256, residual=True) # TODO: Deeper, wider net, for detail
         
-        self.up1 = UpBlock(512, 256, 256, block_depth)
-        self.attn_up1 = SelfAttention(256)
+        self.up1 = UpBlock(256, 128, 128, block_depth)
+        self.attn_up1 = SelfAttention(128, 16)
 
-        self.up2 = UpBlock(256, 128, 128, block_depth)
-        self.attn_up2 = SelfAttention(128)
+        self.up2 = UpBlock(128, 96, 96, block_depth)
+        self.attn_up2 = SelfAttention(96, 32)
 
-        self.up3 = UpBlock(128, 96, 96, block_depth)
-        self.attn_up3 = SelfAttention(96)
+        self.up3 = UpBlock(96, 64, 64, block_depth)
+        self.up4 = UpBlock(64, 32, 32, block_depth)
 
-        self.up4 = UpBlock(96, 64, 64, block_depth)
-
-        self.output = nn.Conv2d(64, c_out, kernel_size=3, padding=1, bias=False)
+        self.output = nn.Conv2d(32, c_out, kernel_size=3, padding=1, bias=False)
 
         # DownBlock:  3, 32     ------>                     # UpBlock: 64, 32, + 32
             # DownBlock: 32, 64     ------>             # UpBlock: 96, 64, + 64
@@ -238,7 +315,6 @@ class UNet(DiffusionUNet):
         x, skip1 = self.down1(x)
         #print("After down1 shape:", x.shape)
 
-        x = self.attn_down2(x) 
         x, skip2 = self.down2(x)
         #print("After down2 shape:", x.shape)
         x = self.attn_down3(x)  
@@ -265,7 +341,7 @@ class UNet(DiffusionUNet):
         #print("After up2 shape:", x.shape)
         
         x = self.up3(x, skip2)
-        x = self.attn_up3(x)  
+        
         #print("After up3 shape:", x.shape)
 
         x = self.up4(x, skip1)
