@@ -40,8 +40,8 @@ if __name__ == '__main__':
     # Model configuration.
     parser.add_argument('--c_in', type=int, default=3, help='dimension of input image')
     parser.add_argument('--c_out', type=int, default=3, help='dimension of output image')
-    parser.add_argument('--crop_size', type=int, default=64, help='crop size')
-    parser.add_argument('--image_size', type=int, default=64, help='image resolution')
+    parser.add_argument('--crop_size', type=int, default=128, help='crop size')
+    parser.add_argument('--image_size', type=int, default=128, help='image resolution')
     parser.add_argument('--conv_dim', type=int, default=64, help='number of conv filters in the first layer of the UNet')
     parser.add_argument('--block_depth', type=int, default=3, help='depth of conv layers in encoder/decoder')
     parser.add_argument('--time_emb_dim', type=int, default=256, help='number of channels for time embedding')
